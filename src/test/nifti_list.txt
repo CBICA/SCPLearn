@@ -1,0 +1,10 @@
+test/test_2d_subject_0.nii.gz
+test/test_2d_subject_1.nii.gz
+test/test_2d_subject_2.nii.gz
+test/test_2d_subject_3.nii.gz
+test/test_2d_subject_4.nii.gz
+test/test_2d_subject_5.nii.gz
+test/test_2d_subject_6.nii.gz
+test/test_2d_subject_7.nii.gz
+test/test_2d_subject_8.nii.gz
+test/test_2d_subject_9.nii.gz

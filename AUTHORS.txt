@@ -1,0 +1,30 @@
+  Section of Biomedical Image Analysis
+  Goddard Building
+  3701 Hamilton Walk, 6th Floor
+  Philadelphia, PA 19104
+
+  Web:   http://www.cbica.upenn.edu/sbia/
+  Email: sbia-software at uphs.upenn.edu
+
+  Copyright (c) 2015 University of Pennsylvania. All rights reserved.
+  See http://www.cbica.upenn.edu/sbia/software/license.html or COPYING file.
+
+
+
+INTRODUCTION
+============
+
+  This document lists the authors of this software and further people who
+  significantly contributed to it.
+
+  See the README and COPYING documents for general information,
+  acknowledgements of contributions other kind, and licensing.
+
+
+
+AUTHORS
+=======
+
+  The authors of this software are:
+
+  - Harini Eavani, Harini.Eavani@uphs.upenn.edu 
