@@ -78,15 +78,15 @@ GroupIndex2 = rand_indices(floor(N/2)+1:N);
 %%
 %> Training Run 1
 if(K>D)
-    [IDX, ~] = kmeans(ts_data, D);
-    params.initdict = double(bsxfun(@eq,IDX,1:1:D)); 
-    params.initdict = [params.initdict, params.initdict(:,1:K-D)];
+    multFact = ceil(K/D);
+    params.initdict = repmat(eye(D),1,multFact);
+    params.initdict = params.initdict(:,1:K);
 else
-    [IDX, ~] = kmeans(ts_data, K);
+    [IDX, ~] = kmeans(mean(data(:,:,GroupIndex1),3), K,'Replicates',10);   
     params.initdict = double(bsxfun(@eq,IDX,1:1:K));
 end
 params.data = data(:,:,GroupIndex1);
-params.iternum = 50;
+params.iternum = 51;
 params.lambda = lambda;
 params.pruningThr = pruningThr;
 params.sample_weights = sample_weights;
@@ -95,15 +95,15 @@ params.sample_weights = sample_weights;
 %%
 %> Training Run 2
 if(K>D)
-    [IDX, ~] = kmeans(ts_data, D);
-    params.initdict = double(bsxfun(@eq,IDX,1:1:D)); 
-    params.initdict = [params.initdict, params.initdict(:,1:K-D)];
+    multFact = ceil(K/D);
+    params.initdict = repmat(eye(D),1,multFact);
+    params.initdict = params.initdict(:,1:K);
 else
-    [IDX, ~] = kmeans(ts_data, K);
+    [IDX, ~] = kmeans(mean(data(:,:,GroupIndex2),3), K,'Replicates',10);   
     params.initdict = double(bsxfun(@eq,IDX,1:1:K));
 end
 params.data = data(:,:,GroupIndex2);
-params.iternum = 50;
+params.iternum = 51;
 params.lambda = lambda;
 params.pruningThr = pruningThr;
 params.sample_weights = sample_weights;

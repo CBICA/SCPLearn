@@ -15,120 +15,22 @@
 # <a href="https://www.cbica.upenn.edu/sbia/software/">Link to CBICA Software</a> 
 ##########################################################################
 
-import os, sys, getopt
+import os
 import pandas as pd
-from numpy import sort, float32, uint8, zeros, unique
+from numpy import sort, float32, zeros, unique
 from SCPUtils import *
 import nibabel as nib
 
-SVN_REVISION = "1.0.0"
-EXEC_NAME = "replaceLabels_nib.py"
-
-def version():
-    """prints Version information"""
-    msg = EXEC_NAME + """
-
-  Release Information
-      replaceLabels_nib.py Release : 1.0.0
-      Contact : SBIA Group <sbia-software at uphs.upenn.edu>
-    """
-
-    svnMsg = """
-  SVN information
-      Project Revision : """ + SVN_REVISION
-
-    if (len(SVN_REVISION) != 0):
-        msg = msg + svnMsg
-    print msg
-
-
-def usage():
-    """prints usage information"""
-    print r"""
-  %(EXEC)s--
-    Replace labels in an ROI volume with a set of statistical values
-
-  Usage: %(EXEC)s [OPTIONS]
-
-  Required Options:
-    [-d --dataFile]   Specify the input spreadsheet (csv format). Must have IDs containing the
-                      label number in the first column and descriptive headers in the first row
-    [-A --atlas]      Specify the ROI atlas
-    [-H --header]     Specify the header of the column whoose values you want to use
-                      (optional if your list contains only two columns)
-  Other Options:
-    [-o --outputDir]    The output directory. Default is the directory of the input spreadsheet
-    [-p --prefix]       Specify a prefix for the output file. Default is <atlas prefix>_<header used>
-
-  Get Help:
-    [-h --help -u --usage]   Display this message
-    [-V --Version]           Version information
-    [-v --verbose]           Verbose output
-
-  Examples:
-    %(EXEC)s -d roi_stats.csv -A JHU_2m_las_WMPM2.hdr -H GLM_AGE_BETA
-   # Uses a transposed spreadsheet, such as that output by statistics.py
-    %(EXEC)s -d list.txt -A jakob_rad_convention_labels_no_cere_lps.hdr 
-   # Uses a tab-delimited list (created in excel for example)
-   # no need for -H if your list contains only 2 columns
-  """ % {'EXEC':EXEC_NAME}
-
-def main():
-    """parse command line input and call appropriate functions"""
-    verbose  = 0
-
-    dataFile   = None
-    atlas      = None
-
-    prefix     = None
-    outDir     = None
-    header     = None
-
-    rOpts = 0
-    try:
-        opts, files = getopt.gnu_getopt(sys.argv[1:], "hd:o:p:vVuA:H:",
-        ["help","dataFile=","outputDir=","prefix=","verbose","Version","usage","atlas=","header="])
-
-    except getopt.GetoptError, err:
-        usage()
-        cryandexit(str(err)) # option -x not recognized..
-
-    for o, a in opts:
-        #print o,a
-        if o in ["-v", "--verbose"]:
-            verbose+=1
-        elif o in ["-h", "--help","-u","--usage"]:
-            usage()
-            sys.exit(0)
-        elif o in ["-V", "--Version"]:
-            version()
-            sys.exit(0)
-        elif o in ["-d", "--dataFile"]:
-            dataFile = os.path.realpath(a)
-            if not fileExists(dataFile):
-                cryandexit("File does not exist", dataFile)
-            rOpts+=1
-        elif o in ["-p", "--prefix"]:
-            prefix = a
-        elif o in ["-o", "--outputDir"]:
-            outDir = a
-        elif o in ["-H", "--header"]:
-            header = a
-        elif o in ["-A", "--atlas"]:
-            atlas = os.path.realpath(a)
-            if not fileExists(atlas):
-                cryandexit("File does not exist", atlas)
-            rOpts+=1
-        else:
-            assert False, "unhandled option"
-
-    if rOpts != 2:
-        usage()
-        cryandexit("Please specify all required options")
-
-    # parameter checking
-    if not outDir:
-        outDir = getFilePath(dataFile)
+def replaceLabels_nib(dataFile,atlas,header,prefix,outDir):
+    
+    dataFile = os.path.realpath(dataFile)
+    if not fileExists(dataFile):
+        cryandexit("File does not exist", dataFile)
+    
+    atlas = os.path.realpath(atlas)
+    if not fileExists(atlas):
+        cryandexit("File does not exist", atlas)
+            
     outDir = os.path.realpath(outDir)
     if not os.path.exists(outDir):
         print "!! Output path does not exist. Creating", outDir
@@ -156,8 +58,6 @@ def main():
             cryandexit("More than two columns found! Please specify -H")
 
     # build output filename
-    if not prefix:
-        prefix = getFileBase(atlas) + '_' + header.replace('__','')
     outputfile = os.path.join(outDir,prefix+getFileExt(atlas))
 
     # build dictionary
@@ -189,8 +89,7 @@ def main():
     # replace labels!
     for label in labels:
         if not mydict.has_key(label):
-            if verbose:
-                print "!! Warning: Could not find replacement for label",label,".Setting it to 0"
+            print "!! Warning: Could not find replacement for label",label,".Setting it to 0"
             out_data[atlas_data==label] = 0
         else:
             out_data[atlas_data==label] = mydict[label]
@@ -198,10 +97,3 @@ def main():
     # save
     out_img = nib.Nifti1Image(out_data, atlas_im._affine,header=atlas_im._header)
     nib.save(out_img,outputfile)
-    if verbose:
-        print ">> Saved",outputfile
-
-    sys.exit(0)
-
-
-if __name__ == '__main__': main()

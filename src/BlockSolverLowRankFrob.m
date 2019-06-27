@@ -73,22 +73,7 @@ Coptions.N = N;
 Coptions.D = D;
 Coptions.verbose=verbose;
 
-
-%> Set solver options for Bsolver
-Boptions.BBMethod = 3;
-Boptions.lambda = params.lambda;
-Boptions.K = K;
-Boptions.N = N;
-Boptions.D = D;
-Boptions.verbose=verbose;
-Boptions.isPositive = params.isPositive;
-err = zeros(1,iternum);
-
-B =  B0 ;
-C =  C0 ;
-E = rand(D,N);
-iter = 1;
-
+E = zeros(D,N);
 %%
 %> Check if this is only for test (default it is not)
 if (isfield(params,'test'))
@@ -101,10 +86,27 @@ if (isfield(params,'test'))
 end% end if
 
 %%
+%> Set solver options for Bsolver
+Boptions.BBMethod = 3;
+Boptions.lambda = params.lambda;
+Boptions.K = K;
+Boptions.N = N;
+Boptions.D = D;
+Boptions.verbose=verbose;
+Boptions.isPositive = params.isPositive;
+err = zeros(1,iternum);
+
+B =  B0 ;
+C =  C0 ;
+%E = rand(D,N);
+iter = 1;
+
+%%
+iternum = iternum + mod(iternum,2) +1 ; 
 %> Start Main Loop
 while(iter <= iternum)
     
-    if mod(iter,3) == 2    
+    if mod(iter,2) == 0    
         %> optimization wrt to B
         blockName = 'B' ;
         B0 = B ;
@@ -113,25 +115,25 @@ while(iter <= iternum)
         [B,C] = renormalize(B,C);
     end
     
-    if mod(iter,3) == 1      
+    if mod(iter,2) == 1      
         %> optimization wrt to C
         blockName = 'C' ;
         C0 = C ;
         C  = CSolver_lowrank_frob(C0,data,params.sample_weights,B,E,Coptions) ;
     end % end if 
     
-    if mod(iter,3) == 0   
+    %if mod(iter,3) == 0   
         %> optimization wrt to D
-        blockName = 'E' ;
-        E  = ESolver_lowrank_frob(B,C,data) ;        
-    end
+        %blockName = 'E' ;
+        %E  = ESolver_lowrank_frob(B,C,data) ;        
+    %end
    
     curTime = datestr(now) ;
     %> Calculate objective (error)
     err(iter) = ComputeObjective(data,params.sample_weights,B,C,E);
     %> Print update
     if(verbose)
-        fprintf(1,'Block %s, (%s)-Iteration %d : Error = %3.2f\n',blockName, curTime,iter,err(iter));
+        fprintf(1,'Block %s, (%s)-Iteration %d finished\n',blockName, curTime,iter);
     end
 
     iter = iter + 1;

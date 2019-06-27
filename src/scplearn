@@ -1,0 +1,264 @@
+#!/usr/bin/env python
+###########################################################################
+# @package SCPLearn
+# @brief This script runs SCPLearn with nifti data \n
+#
+# It takes as input \n
+# (1) list of nifti/mat files containing subject time-series data \n
+# (2) the mask of ROIs/parcellation/atlas \n
+# It outputs  \n
+# (1) a mat file containing all the outputs in ROI space  \n
+# (2) a set of nifti files containing the  SCP maps \n
+# (3) a csv file containing all the coefficients \n
+#
+# @author Harini Eavani
+#
+# <a href="https://www.cbica.upenn.edu/sbia/software/">Link to CBICA Software</a> 
+##########################################################################
+
+import os, sys, getopt, tempfile, shutil, csv
+sys.path.append('PATH_TO_INSTALL')
+os.environ["PATH"] += os.pathsep + os.path.realpath('PATH_TO_INSTALL')
+
+from SCPUtils import *
+from ComputeROIAverages import *
+from replaceLabels_nib import *
+
+SVN_REVISION = "1.1.0"
+EXEC_NAME = "scplearn"
+
+def version():
+    """prints Version information"""
+    msg = EXEC_NAME + """
+
+  Release Information
+      scplearn Release : 1.1.0
+      Contact : SBIA Group <sbia-software at uphs.upenn.edu>
+    """
+
+    svnMsg = """
+  SVN information
+      Project Revision : """ + SVN_REVISION
+
+    if (len(SVN_REVISION) != 0):
+        msg = msg + svnMsg + "\n Copyright (c) 2015 University of Pennsylvania. All rights reserved."
+    print msg
+    
+def usage():
+    """prints usage information"""
+    print """
+    scplearn--
+    Generates Sparse Connectivity Patterns from resting state fMRI data
+
+    Usage: scplearn [OPTIONS] 
+
+    Required Options:
+    [-d --data]         Specify the text file with list of nifti files (required) 
+                        *** OR ***
+                        Specify the text file with list of mat files (required) 
+                        Each mat file must contain a variable named 'ts'
+                        'ts' must be a matrix of time-series, size (# of ROIs X # of timepoints)
+                    
+    [-m --mask]         Specify the nifti ROI/parcel/atlas file (required)
+    [-p --prefix]       Specify the prefix of the output file  (required)
+    
+    Options:
+    [-t --type]         Specify the data type of input with either "matlab" or "nii".      
+    [-s --sparsity]     Specify the sparsity constraint as positive value. Default = nROIs/10. 
+    [-n --numberOfSCPs] Specify number of primary SCPs. Default = 10.    
+    [-r --pruning]      Specify the pruning threshold as a value between [0,1]. Default = 0.7.    
+    [-l --levels]       Specify number of secondary SCPs. Default = 50.
+
+    [-o --outputDir]            The output directory to write the results. Defaults to the location of the input file
+    [-w --workingDir]           Specify a working directory. By default a tmp dir is created and used
+    [-u --usage | -h --help]    Display this message
+    [-v --verbose]              Verbose output
+    [-V --Version]              Display version information
+
+    Examples:
+    scplearn -d list_of_nifti_files.txt -t nii -m Grasp_level5.nii -p SCP_results -n 10 -s 50 -o /sbia/sbiaprj/BLSA -v
+    scplearn -d list_of_mat_files.txt -m Grasp_level5.nii -p SCP_results -n 10 -r 0.5 -o /sbia/sbiaprj/BLSA -v
+    scplearn -d list_of_mat_files.txt -t matlab -m Grasp_level5.nii -p SCP_results -l -n 10 -o /sbia/sbiaprj/BLSA -v
+    
+    Example list_of_nifti_files.txt:
+    ProjName_subj_165464.nii.gz
+    ProjName_subj_26464.nii.gz
+    ProjName_subj_1054.nii.gz......      
+    """
+    
+  
+def main():
+    """ main function begins here
+    
+    This function parses input arguments. It then calls \n
+    1) ComputeROIAverages.py to extract ROI data from nifti files \n
+    2) SCPLearnFromMatFiles which runs the main SCPLearn software \n
+    3) replaceLabels_nib.py which maps SCPs from ROI to voxel nifti files \n
+    """
+    rOpts = 0
+    verbose = 0
+    numberOfSCPs = '10'
+    pruning = '0.7'
+    sparsity = '-1'
+    levels = '50'
+    # the defaults
+    outDir = None
+    workingDir = None
+    fileType = None
+    
+    print('Parsing arguments\n')
+    try:
+        opts, files = getopt.gnu_getopt(sys.argv[1:], "hd:n:r:s:m:o:p:vVuw:l:t:",
+        ["help", "data=","numberOfSCPs=","pruning=","sparsity=", "mask=","outputDir=","prefix=","verbose","Version","usage","workingDir=","levels=","type="]) # parameters with : or = will expect an argument!
+
+    except getopt.GetoptError, err:
+        usage()
+        print str(err) # will print something like "option -a not recognized"
+        sys.exit(2)
+
+    for o, a in opts:
+        if o in ("-v", "--verbose"):
+            verbose+=1
+        elif o in ("-h", "--help","-u","--usage"):
+            usage()
+            sys.exit(0)
+        elif o in ("-V", "--Version"):
+            version()
+            sys.exit(0)
+        elif o in ("-d", "--data"):
+            dataFile = a
+            rOpts+=1 # fore required options
+        elif o in ("-p", "--prefix"):
+            prefix = a
+            rOpts+=1 # fore required options
+        elif o in ("-n", "--numberOfSCPs"):
+            numberOfSCPs = a
+        elif o in ("-t", "--type"):
+            fileType = a            
+        elif o in ("-s", "--sparsity"):
+            sparsity = a
+        elif o in ("-r", "--pruning"):
+            pruning = a            
+        elif o in ("-o", "--outputDir"):
+            outDir = a
+        elif o in ("-w", "--workingDir"):
+            workingDir = a
+        elif o in ("-l", "--levels"):
+            levels = a
+        elif o in ("-m", "--mask"):
+            maskFile = a
+            rOpts+=1 # fore required options
+        else:
+            assert False, "unhandled option"
+
+    if rOpts != 3:
+        usage()
+        cryandexit("Please specify all required options")
+     
+    # expand the files into absolute paths
+    dataFile = os.path.realpath(dataFile)
+    maskFile = os.path.realpath(maskFile)
+
+    # check input
+    if not fileExists(dataFile):
+        cryandexit("File not found", dataFile)
+    if not fileExists(maskFile):
+        cryandexit("File not found", maskFile)
+
+    # check prefix
+    idStr = getFileBase(dataFile)
+    if idStr == prefix:
+        cryandexit("To avoid confusion the prefix must be different from the base of the input data file", prefix)
+
+    # check output dir
+    if not outDir:
+        outDir = getFilePath(dataFile)
+
+    # make working directory
+    print('Making working directory\n')
+    if workingDir == None:
+        if ( os.environ.has_key( 'SBIA_TMPDIR' ) ):
+            cwDir = tempfile.mkdtemp(prefix='SCP_Learn',dir=os.environ['SBIA_TMPDIR'])
+        else:
+            cwDir = tempfile.mkdtemp(prefix='SCP_Learn')
+            keepDir = False
+    else:
+        cwDir = workingDir
+        cwDir = os.path.realpath(cwDir)
+    if not os.path.exists(cwDir):
+        os.makedirs(cwDir)
+    elif not os.path.isdir(cwDir):
+        cryandexit("Working dir is not a directory", cwDir)
+        os.chdir(cwDir) # change to working dir!
+
+    # some verbose messages
+    if verbose > 0:
+        print "dataFile   : "+dataFile
+        print "numberOfSCPs : "+numberOfSCPs
+        print "outDir : "+outDir
+        print "prefix : "+prefix
+        print "cwDir      : "+cwDir
+        print "maskFile : " + maskFile
+        
+    outprefix=outDir+'/'+prefix
+    SCPCoeffFile = outDir+'/'+prefix+'_SCP_Coeffs.csv'
+    SCPBasisFile = outDir+'/'+prefix+'_SCP_basis.csv'    
+    
+    # check if list of files is mat or nifti 
+    with open(dataFile, 'r') as f:
+        first_line = f.readline().strip()
+    f.close()
+    first_file_ext = getFileExt(first_line)
+    
+    # set filetype
+    if fileType is None:
+        if first_file_ext == ".nii.gz" or first_file_ext == ".nii" or first_file_ext == ".hdr" or first_file_ext == ".img":
+            fileType = "nii"
+        elif first_file_ext == ".mat":
+            fileType = "matlab"
+        else:
+            cryandexit("Unknown file extensions in", dataFile)   
+    
+    
+    if fileType == "nii":
+        print('Extracting time-courses from nifti files\n')
+        matlist= os.path.join(outDir,getFileBase(dataFile) + '_' + getFileBase(maskFile)+'.txt')
+        ComputeROIAverages(dataFile,maskFile,outDir)
+        if not fileExists(matlist):
+            cryandexit("Error in extracting time-series, ", matlist," not found")
+    elif fileType == "matlab":
+        matlist = dataFile
+    else:
+        cryandexit("file type must be either \"matlab\" or \"nii\"")         
+        
+    # once the input file format is sorted proceed
+    print('Starting SCP Learn on time-courses\n') 
+    #mccExe=os.path.dirname(os.path.realpath(sys.argv[0])) + '/SCPLearnFromMatFiles'  
+    mccExe='SCPLearnFromMatFiles' 
+    testval='0' # since we are learning the basis, not testing against an existing one
+    cmdArray=[mccExe,matlist,numberOfSCPs,pruning,sparsity,outprefix,levels,str(verbose),testval]
+    execCmd(cmdArray,verbose=1,simulate=False,shell=True)
+    if not fileExists(SCPCoeffFile):
+        cryandexit("Error in generating SCPs, ", dataFile," not found")
+        
+    print('Mapping SCPs on atlas\n')
+
+    with open(SCPBasisFile) as f:
+        reader = csv.reader(f, delimiter=',')
+        first_row = next(reader)
+        nBasis = len(first_row) - 1
+    print(str(nBasis)+' basis found\n')
+    
+    for kk in range(nBasis):
+        scp_nifti=prefix+'_SCP_'+str(kk+1)
+        replaceLabels_nib(SCPBasisFile,maskFile,'SCP_'+str(kk+1),scp_nifti,outDir)
+  
+    # delete the temp
+    print('Cleaning temp directory\n')
+    if workingDir == None:
+        shutil.rmtree(cwDir)
+     
+    return 0
+            
+if __name__ == '__main__': main()
+

@@ -1,0 +1,235 @@
+#!/usr/bin/env python
+###########################################################################
+# @package SCPTest
+# @brief This script runs SCPTest with nifti data \n
+#
+# It takes as input \n
+# (1) list of nifti/mat files containing subject time-series data \n
+# (2) mat file containing the input SCP basis \n
+# It outputs  \n
+# (1) a mat file containing the coefficients  \n
+# (2) a csv file containing all the coefficients \n
+#
+# @author Harini Eavani
+#
+# <a href="https://www.cbica.upenn.edu/sbia/software/">Link to CBICA Software</a> 
+##########################################################################
+
+import os, sys, getopt, tempfile, shutil, csv
+sys.path.append('PATH_TO_INSTALL')
+os.environ["PATH"] += os.pathsep + os.path.realpath('PATH_TO_INSTALL')
+
+from SCPUtils import *
+from ComputeROIAverages import *
+
+SVN_REVISION = "1.1.0"
+EXEC_NAME = "scptest"
+
+def version():
+    """prints Version information"""
+    msg = EXEC_NAME + """
+
+  Release Information
+      scptest Release : 1.1.0
+      Contact : SBIA Group <sbia-software at uphs.upenn.edu>
+    """
+
+    svnMsg = """
+  SVN information
+      Project Revision : """ + SVN_REVISION
+
+    if (len(SVN_REVISION) != 0):
+        msg = msg + svnMsg + "\n Copyright (c) 2015 University of Pennsylvania. All rights reserved."
+    print msg
+    
+def usage():
+    """prints usage information"""
+    print """
+    scptest--
+    Computes SCP coefficients for input data given input SCP basis
+
+    Usage: scptest [OPTIONS] 
+
+    Required Options:
+    [-d --data]         Specify the text file with list of nifti files (required) 
+                        *** OR ***
+                        Specify the text file with list of mat files (required) 
+                        Each mat file must contain a variable named 'ts'
+                        'ts' must be a matrix of time-series, size (# of ROIs X # of timepoints)
+    [-m --mask]         Specify the nifti ROI/parcel/atlas file (required)                
+    [-b --basis]        Specify the input SCP basis, saved as variable 'B' in mat file (required)
+    [-p --prefix]       Specify the prefix of the output file  (required)
+    
+    Options:
+    [-o --outputDir]            The output directory to write the results. Defaults to the location of the input file
+    [-w --workingDir]           Specify a working directory. By default a tmp dir is created and used
+    [-u --usage | -h --help]    Display this message
+    [-v --verbose]              Verbose output
+    [-V --Version]              Display version information
+
+    Examples:
+    scptest -d list_of_nifti_files.txt -b BLSA_SCP_Basis.mat -m Grasp_level5.nii -p SCP_test_coeffs -o /sbia/sbiaprj/BLSA -v
+    scptest -d list_of_mat_files.txt -b BLSA_SCP_Basis.mat -m Grasp_level5.nii -p SCP_test_coeffs -o /sbia/sbiaprj/BLSA -v
+    
+    Example list_of_nifti_files.txt:
+    ProjName_subj_165464.nii.gz
+    ProjName_subj_26464.nii.gz
+    ProjName_subj_1054.nii.gz......
+        
+    """
+    
+  
+def main():
+    """ main function begins here
+    
+    This function parses input arguments. It then calls \n
+    1) ComputeROIAverages.py to extract ROI data from nifti files \n
+    2) SCPLearnFromMatFiles which runs the main SCPTest software \n
+    """
+    rOpts = 0
+    verbose = 0
+
+    # the defaults
+    outDir = None
+    workingDir = None
+    fileType = None
+    
+    print('Parsing arguments\n')
+    try:
+        opts, files = getopt.gnu_getopt(sys.argv[1:], "hd:b:m:o:p:vVuw:t:",
+        ["help", "data=","basis=","mask=","outputDir=","prefix=","verbose","Version","usage","workingDir=","type="]) # parameters with : or = will expect an argument!
+
+    except getopt.GetoptError, err:
+        usage()
+        print str(err) # will print something like "option -a not recognized"
+        sys.exit(2)
+
+    for o, a in opts:
+        if o in ("-v", "--verbose"):
+            verbose+=1
+        elif o in ("-h", "--help","-u","--usage"):
+            usage()
+            sys.exit(0)
+        elif o in ("-V", "--Version"):
+            version()
+            sys.exit(0)
+        elif o in ("-d", "--data"):
+            dataFile = a
+            rOpts+=1 # fore required options
+        elif o in ("-p", "--prefix"):
+            prefix = a
+            rOpts+=1 # fore required options
+        elif o in ("-b", "--basis"):
+            basisFile = a
+            rOpts+=1 # fore required options
+        elif o in ("-m", "--mask"):
+            maskFile = a
+            rOpts+=1 # fore required options
+        elif o in ("-o", "--outputDir"):
+            outDir = a
+        elif o in ("-w", "--workingDir"):
+            workingDir = a
+        else:
+            assert False, "unhandled option"
+
+    if rOpts != 4:
+        usage()
+        cryandexit("Please specify all required options")
+     
+    # expand the files into absolute paths
+    dataFile = os.path.realpath(dataFile)
+    basisFile = os.path.realpath(basisFile)
+    maskFile = os.path.realpath(maskFile)
+    
+    # check input
+    if not fileExists(dataFile):
+        cryandexit("File not found", dataFile)
+    if not fileExists(basisFile):
+        cryandexit("File not found", basisFile)
+    if not fileExists(maskFile):
+        cryandexit("File not found", maskFile)        
+
+    # check prefix
+    idStr = getFileBase(dataFile)
+    if idStr == prefix:
+        cryandexit("To avoid confusion the prefix must be different from the base of the input data file", prefix)
+
+    # check output dir
+    if not outDir:
+        outDir = getFilePath(dataFile)
+
+    # make working directory
+    print('Making working directory\n')
+    if workingDir == None:
+        if ( os.environ.has_key( 'SBIA_TMPDIR' ) ):
+            cwDir = tempfile.mkdtemp(prefix='SCPTest',dir=os.environ['SBIA_TMPDIR'])
+        else:
+            cwDir = tempfile.mkdtemp(prefix='SCPTest')
+            keepDir = False
+    else:
+        cwDir = workingDir
+        cwDir = os.path.realpath(cwDir)
+    if not os.path.exists(cwDir):
+        os.makedirs(cwDir)
+    elif not os.path.isdir(cwDir):
+        cryandexit("Working dir is not a directory", cwDir)
+        os.chdir(cwDir) # change to working dir!
+
+    # some verbose messages
+    if verbose > 0:
+        print "dataFile   : "+dataFile
+        print "basisFile : "+basisFile
+        print "outDir : "+outDir
+        print "prefix : "+prefix
+        print "cwDir      : "+cwDir
+        print "maskFile : " + maskFile
+        
+    outprefix=outDir+'/'+prefix
+    SCPCoeffFile = outDir+'/'+prefix+'_SCP_Coeffs.csv'
+    
+    # check if list of files is mat or nifti 
+    with open(dataFile, 'r') as f:
+        first_line = f.readline().strip()
+    f.close()
+    first_file_ext = getFileExt(first_line)
+    
+    # set filetype
+    if fileType is None:
+        if first_file_ext == ".nii.gz" or first_file_ext == ".nii" or first_file_ext == ".hdr" or first_file_ext == ".img":
+            fileType = "nii"
+        elif first_file_ext == ".mat":
+            fileType = "matlab"
+        else:
+            cryandexit("Unknown file extensions in", dataFile)   
+    
+    
+    if fileType == "nii":
+        print('Extracting time-courses from nifti files\n')
+        matlist= os.path.join(outDir,getFileBase(dataFile) + '_' + getFileBase(maskFile)+'.txt')
+        ComputeROIAverages(dataFile,maskFile,outDir)
+        if not fileExists(matlist):
+            cryandexit("Error in extracting time-series, ", matlist," not found")
+    elif fileType == "matlab":
+        matlist = dataFile
+    else:
+        cryandexit("file type must be either \"matlab\" or \"nii\"")         
+        
+    # once the input file format is sorted proceed
+    print('Starting SCP Learn on time-courses\n') 
+    #mccExe=os.path.dirname(os.path.realpath(sys.argv[0])) + '/SCPLearnFromMatFiles' 
+    mccExe='SCPLearnFromMatFiles' 
+    testval=basisFile # since we are testing against an existing basis
+    cmdArray=[mccExe,matlist,'0','0','0',outprefix,'0',str(verbose),testval]
+    execCmd(cmdArray,verbose=1,simulate=False,shell=True)
+    if not fileExists(SCPCoeffFile):
+        cryandexit("Error in generating SCPs, ", dataFile," not found")
+        
+    # delete the temp
+    print('Cleaning temp directory\n')
+    if workingDir == None:
+        shutil.rmtree(cwDir)
+     
+    return 0
+            
+if __name__ == '__main__': main()
+

@@ -124,15 +124,15 @@ For ease of use, the software takes as input either rsfMRI voxel time-series dat
 It also takes as input the node definitions as an atlas in NIFTI space. This atlas must have the ROI regions numbered $1, 2, 3, \ldots$ and must be in the same space as the subject data. 
 
 \begin{enumerate}
-\item Main function is {\color{blue}SCPLearn.py}. This function parses the input arguments and calls ``ComputeROIAverages.py''.
+\item Main functions are {\color{blue}scplearn} and {\color{blue}scptest}. These functions parses the input arguments and calls ``ComputeROIAverages.py''.
 \item {\color{blue}ComputeROIAverages.py} reads the rsfMRI data and the node definitions. It extracts average time-series of each ROI for each subject and saves it in ``.mat'' files.
-\item These mat files are loaded into MATLAB using the function {\color{magenta}SCPLearnFromMatFiles.m} . Then, based on the input parameters, either (1) {\color{magenta}SCPLearn.m} is called, which computes only primary SCPs,  or (2) {\color{magenta}SCPLearn\_two\_level.m} is called which computes both primary and secondary level SCPs.
+\item These mat files are loaded into MATLAB using the function {\color{magenta}SCPLearnFromMatFiles.m} . Then, based on the input parameters, either (1) {\color{magenta}SCPLearn.m} is called, which computes only primary SCPs,  or (2) {\color{magenta}SCPLearn\_two\_level.m} is called which computes both primary and secondary level SCPs or (3) {\color{magenta}SCPTest.m} is called, which computes only SCP coefficients.
 \item Both the above functions call {\color{magenta}BlockSolverLowRankFrob.m}, which implements the alternate minimization strategy discussed in the previous section. This function calls (1) {\color{magenta}BSolver\_lowrank\_frob.m} (2)  {\color{magenta}CSolver\_lowrank\_frob.m}  (3)  {\color{magenta}ESolver\_lowrank\_frob.m} until termination criteria are met.
 \item {\color{magenta}BSolver\_lowrank\_frob.m} calls two functions (1) {\color{magenta}spg\_04262015.m} which implements projected gradient descent. (2) {\color{magenta}ProjectionOnUnitBoxSimplex.m} implements the projection function for the sparse basis.
-\item After the MATLAB code has finished running, {\color{blue}SCPLearn.py} calls {\color{blue}replaceLabels\_nib.py}. This python code replaces the labels in the atlas with the values of the nodes in each SCP. In this manner, for each SCP, a nifti image is written to disk.
+\item After the MATLAB code has finished running, {\color{blue}scplearn} calls {\color{blue}replaceLabels\_nib.py}. This python code replaces the labels in the atlas with the values of the nodes in each SCP. In this manner, for each SCP, a nifti image is written to disk.
 \item The set of python functions in {\color{blue}SCPUtils.py} are used for error checking, handling exceptions, file check, etc
 \item The MATLAB functions {\color{magenta}SCPLearn\_SplitSample.m}, {\color{magenta}CompareSCPs.m},{\color{magenta}Hungarian.m} implement split-sample SCP reproducibility and error calculation, as described and used in the main paper.
-\item The python script {\color{blue}makeAll.py} calls mcc to build {\color{magenta}SCPLearnFromMatFiles.m} as an mcc-executible. It then copies all python files to the install directory.
+\item The python script {\color{blue}make} calls mcc to build {\color{magenta}SCPLearnFromMatFiles.m} as an mcc-executible. It then copies all python files to the install directory.
 \end{enumerate}
 
 \section{Installation}
@@ -152,9 +152,18 @@ Make sure all dependencies are met before proceeding with install.
 \subsection{Generating standalone executables}
 
 \begin{enumerate}
-\item Within the \texttt{src/}  directory, run \texttt{makeAll.py}  with the location of the install directory as the argument:
+\item Within the \texttt{src/}  directory, run \texttt{./make}. This runs mcc, and generates the executible for \texttt{SCPLearnFromMatFiles.m}
 
-\texttt{makeAll.py <installDir>}
+\item Within the \texttt{src/}  directory, run \texttt{./make test}. This runs scplearn on synthetic test data, and checks if the results match with ground truth. This command should return three SCPs, saved as nifti files in \texttt{src/test/test\_2d\_SCP\_{1,2,3}.nii.gz} along with other output. By design, three patterns were used as 'ground-truth' SCPs to generate the synthetic data; a cross, a circle and a square. Was SCPLearn able to clearly separate these three patterns in the output? You can compare your result to the results in \texttt{src/test/Test\_2d\_all.png}
+
+If testing succeeded, you will see the message: 
+
+\texttt{Match between results and ground truth xx.xxxx>70\% - test passed!", where xx.xx is the percentage match between result and ground-truth.}
+Proceed to install only if testing is completed.
+
+\item Within the \texttt{src/}  directory, run \texttt{./make install}  with the location of the install directory as the argument:
+
+\texttt{./make install <installDir>}
 
 \item Add the install directory to your path by running the following command. 
 
@@ -167,97 +176,146 @@ Replace \texttt{\${installDir}} with the location of the install directory from 
 
 \subsection{Generating documentation}
 
-
-Run \texttt{doxygen Doxyfile} from the parent directory.
-The documentation is built in \texttt{docs/*}. Open \texttt{ docs/index.html} in your favorite browser to begin.
+The above make install command creates doxygen documentation in "docs/*". Please open "docs/index.html" in you browser.
 
 \section{Usage}
+This software provides two executibles for users - scplearn and scptest.
+
+scplearn takes a set of data as input(either NIFTI data or mat files), and generates both SCPs as well as SCP coeffcients for that data. SCPs are common to the whole group, SCP coefficients are subject specific.
 \begin{verbatim}
-Usage: SCPLearn.py [OPTIONS] 
+	scplearn--
+    Generates Sparse Connectivity Patterns from resting state fMRI data
 
-Required Options:
-[-d --data] Specify the text file with list of nifti files (required) 
-            *** OR ***
-            Specify the text file with list of mat files (required) 
-            Each mat file must contain a variable named 'ts'
-            'ts' must be a matrix of time-series, size = #ROIs X #timepoints
+    Usage: scplearn [OPTIONS] 
+
+    Required Options:
+    [-d --data]    Specify the text file with list of nifti files (required) 
+                    *** OR ***
+                   Specify the text file with list of mat files (required) 
+                   Each mat file must contain a variable named 'ts'
+                   'ts' must be a matrix of time-series, 
+                   size (# of ROIs X # of timepoints)
                     
-[-m --mask]   Specify the nifti ROI/parcel/atlas file (required)
-[-p --prefix] Specify the prefix of the output file  (required)
+    [-m --mask]    Specify the nifti ROI/parcel/atlas file (required)
+    [-p --prefix]  Specify the prefix of the output file  (required)
     
-Options:
-[-s --sparsity] 	Specify the sparsity constraint as positive value. 
-                 Default = nROIs/8 
-[-n --numberOfSCPs] 	Specify the number of SCPs as a number. 
-                     Default = 10.    
-[-r --pruning]  Specify the pruning threshold as a value between [0,1]. 
-                Default = 0.7.    
-[-l --levels]  	Hierarchical learning of SCPs. Not run by default. 
+    Options:
+    [-t --type]   	 Specify the data type of input with either "matlab" or "nii".      
+    [-s --sparsity]  Specify the sparsity constraint as positive value. 
+    					 Default = nROIs/10. 
+    [-n --numberOfSCPs]   Specify number of primary SCPs. 
+    							Default = 10.    
+    [-r --pruning]   Specify the pruning threshold as a value between [0,1]. 
+    					Default = 0.7.    
+    [-l --levels]   Specify number of secondary SCPs. 
+    					Default = 50.
 
-[-o --outputDir] The output directory to write the results. 
-                 Defaults to the location of the input file
-[-w --workingDir] Specify a working directory. 
-                  By default a tmp dir is created and used
-[-u --usage | -h --help] Display this message
-[-v --verbose]           Verbose output
-[-V --Version]           Display version information
+    [-o --outputDir]       The output directory to write the results. 
+    						Defaults to the location of the input file
+    [-w --workingDir]      Specify a working directory. 
+    						By default a tmp dir is created and used
+    [-u --usage | -h --help]    Display this message
+    [-v --verbose]              Verbose output
+    [-V --Version]              Display version information
 
-Example:
-SCPLearn.py -d list_of_nifti_files.txt -m Grasp_level5.nii -p SCP_results \
-                    -n 10 -o /sbia/sbiaprj/BLSA -v
+    Examples:
+    scplearn -d list_of_nifti_files.txt -t nii -m Grasp_level5.nii \
+    								-p SCP_results -n 10 -s 50 -o /sbia/sbiaprj/BLSA -v
+    scplearn -d list_of_mat_files.txt -m Grasp_level5.nii \
+    								-p SCP_results -n 10 -r 0.5 -o /sbia/sbiaprj/BLSA -v
+    scplearn -d list_of_mat_files.txt -t matlab -m Grasp_level5.nii \
+    								-p SCP_results -l -n 10 -o /sbia/sbiaprj/BLSA -v
     
-Example list_of_nifti_files.txt without sample weights:
-ProjName_subj_165464.nii.gz
-ProjName_subj_26464.nii.gz
-ProjName_subj_1054.nii.gz......
-
-Example list_of_nifti_files.txt with sample weights:
-ProjName_subj_165464.nii.gz,172
-ProjName_subj_26464.nii.gz,160
-ProjName_subj_1054.nii.gz,120......      
+    Example list_of_nifti_files.txt:
+    ProjName_subj_165464.nii.gz
+    ProjName_subj_26464.nii.gz
+    ProjName_subj_1054.nii.gz......      
 \end{verbatim}
-To run this software you will need:
+    
+
+scplearn takes as input a text file with the list of nifti/mat files. If input is nifti, each nifti file must be pre-processed rsfMRI 4D scan in a common template/standard space. If input is mat files, each mat file must contain a variable named 'ts'. 'ts' must be a matrix of time-series,  size (\# of ROIs X \# of timepoints) It also requires the "node" definitions (e.g. atlas, parcellation, ROI definition, etc) to be input as a nifti file. The node definitions need to be in the same template space as the other nifti files.
+
+Mandatory arguments are:
 \begin{enumerate}
-\item Text file with list of NIFTI files
-\item NIFTI file with node definitions
+ \item List of nifti/mat files
+ \item NIFTI mask/atlas/ROI file
+ \item Prefix for all output files
 \end{enumerate}
+
+Optional arguments are:
+\begin{enumerate}
+ \item Number of SCPs at the primary level. Default = 10.
+ \item Sparsity level of SCPs. Default = Number of ROIs / 10. 
+ \item Pruning threshold. Default = 0.7. SCPs with inner-product overlap greater than this threshold are discarded
+ \item Number of SCPs at the secondary level in the hierarchical decomposition. Default=50. 
+\end{enumerate}
+ 
 In the output directory, the software returns:
 \begin{enumerate}
-\item One NIFTI file for each SCP that is generated, with file name \texttt{$<$prefix$>$\_SCP\_\#.nii.gz}
-\item A \texttt{$<$prefix$>$\_SCP\_Coeffs.csv} file with the SCP coefficients for all the subjects, indexed by the NIFTI filename that was input
-\item A \texttt{$<$prefix$>$\_SCP\_basis.csv} file with the SCP basis, in csv format
-\item A \texttt{$<$prefix$>$\_SCPs.mat} file with all the outputs in MATLAB ``.mat'' format
-\item A \texttt{$<$prefix$>$\_ts.mat} file with the average time-series from all the subjects in MATLAB ``.mat'' format
-\item A \texttt{$<$subject$>$\_$<$atlas$>$.mat} file with the average time-series for each subject 
+ \item One NIFTI file for each SCP that is generated, with file name <prefix>\_SCP\_\#.nii.gz
+ \item A $<$prefix$>$\_SCP\_Coeffs.csv file with the SCP coefficients for all the subjects, indexed by the NIFTI/mat filename that was input
+ \item A $<$prefix$>$\_SCP\_basis.csv file with the SCP basis, in csv format
+ \item A $<$prefix$>$\_SCPs.mat file with all the outputs in MATLAB '.mat' format
+ \item A $<$prefix$>$\_ts.mat file with the average time-series from all the subjects in MATLAB '.mat' format
+ \item A $<$subject$>$\_$<$atlas$>$.mat file with the average time-series for each subject 
 \end{enumerate}
 
+scptest takes a set of data AND SCPs as input, and generates on SCP coefficients for the data, corresponding to the SCPs that were input. For example, scplearn may be used when generating SCPs for the first time within a study. For subsequent participants that are acquired and processed, there is no need to re-compute SCPs; one can use existing SCPs as the reference and generate only SCP coefficients for the subsequent participants.
+\begin{verbatim} 
+    scptest--
+    Computes SCP coefficients for input data given input SCP basis
 
-\section{Testing}
-To test the software, we have provided synthetic nifti as well as mat data for ten ``subjects''. These are located in \texttt{ src/test}. 
+    Usage: scptest [OPTIONS] 
 
-To run the software on the synthetic data, run the following command from the \texttt{ src/} folder :
+    Required Options:
+    [-d --data]    Specify the text file with list of nifti files (required) 
+                    *** OR ***
+                   Specify the text file with list of mat files (required) 
+                   Each mat file must contain a variable named 'ts'
+                   'ts' must be a matrix of time-series,
+                    size (# of ROIs X # of timepoints)
+    [-m --mask]    Specify the nifti ROI/parcel/atlas file (required)                
+    [-b --basis]    Specify the input SCP basis, 
+    					saved as variable 'B' in mat file (required)
+    [-p --prefix]      Specify the prefix of the output file  (required)
+    
+    Options:
+    [-o --outputDir]       The output directory to write the results. 
+    							Defaults to the location of the input file
+    [-w --workingDir]      Specify a working directory. 
+    							By default a tmp dir is created and used
+    [-u --usage | -h --help]    Display this message
+    [-v --verbose]              Verbose output
+    [-V --Version]              Display version information
 
-\texttt{SCPLearn.py -d test/nifti\_list.txt -p test\_2d -m test/test\_2d\_mask.nii.gz -o test/ -n 3 -s 10}  \\
+    Examples:
+    scptest -d list_of_nifti_files.txt -b BLSA_SCP_Basis.mat -m Grasp_level5.nii \
+    										-p SCP_test_coeffs -o /sbia/sbiaprj/BLSA -v
+    scptest -d list_of_mat_files.txt -b BLSA_SCP_Basis.mat -m Grasp_level5.nii \
+    										-p SCP_test_coeffs -o /sbia/sbiaprj/BLSA -v
+    
+    Example list_of_nifti_files.txt:
+    ProjName_subj_165464.nii.gz
+    ProjName_subj_26464.nii.gz
+    ProjName_subj_1054.nii.gz......
+\end{verbatim}
+scptest takes as input a text file with the list of nifti/mat files, NIFTI "node" file as well as the SCPs stored in "mat" file format.
 
-or 
+Mandatory arguments are:
+\begin{enumerate}
+ \item List of nifti/mat files
+ \item NIFTI mask/atlas/ROI file
+ \item SCPs saved in mat file format (generated by a prior run of scplearn)
+ \item Prefix for all output files
+\end{enumerate}
 
-\texttt{SCPLearn.py -d test/mat\_list.txt -p test\_2d -m test/test\_2d\_mask.nii.gz -o test/ -n 3 -s 10}
-
-This command should return three SCPs, saved as nifti files in  \\
-\texttt{  src/test/test\_2d\_SCP\_{1,2,3}.nii.gz } \\
-along with other output. 
-
-By design, three patterns were used as ``ground-truth'' SCPs to generate the synthetic data; a cross, a circle and a square.
-Was SCPLearn able to clearly separate these three patterns in the output? You can compare your result to the results in \texttt{test/Test\_2d\_all.png}. This image is also shown in Figure \ref{fig:test}.
-
-\begin{figure}
-\centering
-\includegraphics[scale=0.8]{src/test/Test_2d_all.png}
-\caption{Synthetic SCPs used for testing. Results from SCPLearn and other approaches are also shown.}
-\label{fig:test}
-\end{figure}
-
-In addition, the NetSim-based synthetic data used in the original paper is provided in \texttt{netsim\_data\_05262014\_timeseries.mat}. To test the MATLAB code using this data, run \texttt{testSCPLearnCode.m} from the MATLAB command line.
+In the output directory, the software returns:
+\begin{enumerate}
+ \item A $<$prefix$>$\_SCP\_Coeffs.csv file with the SCP coefficients for all the subjects, indexed by the NIFTI/mat filename that was input
+ \item A $<$prefix$>$\_SCPs.mat file with all the outputs in MATLAB '.mat' format
+ \item A $<$prefix$>$\_ts.mat file with the average time-series from all the subjects in MATLAB '.mat' format
+ \item A $<$subject$>$\_$<$atlas$>$.mat file with the average time-series for each subject 
+\end{enumerate}
 
 \section{Citation}
 If you find this code useful, please cite: \\

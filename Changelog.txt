@@ -1,0 +1,11 @@
+==Release History==
+
+===Version 1.1.0===
+* Main user command renamed from SCPLearn.py to scplearn
+* New command "scptest" can be used to generate SCP coefficients only for new subject data, if SCPs were already generated previously
+* Changed installation style to have "make", "make test" and "make install"
+* Installation folder structure separates user-visible executibles in bin/ ("scplearn" and "scptest") from others in libexec/
+
+===Version 1.0.0===
+* First release of scplearn software
+

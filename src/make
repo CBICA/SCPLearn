@@ -1,0 +1,114 @@
+#!/usr/bin/env python
+###########################################################################
+# @package make
+#  @brief This script calls mcc within matlab 
+# Build: "./make"
+# Test: "./make test"
+# Install: "./make install $installdir"
+#
+# @author Harini Eavani
+#
+# @Link: https://www.cbica.upenn.edu/sbia/software/
+#
+# @Contact: sbia-software@uphs.upenn.edu
+##########################################################################
+
+import os, sys
+from SCPUtils import *
+
+## check input arguments
+if len(sys.argv) < 2:
+    #matlab -nodesktop -nosplash -r "mcc -mv SCPLearnFromMatFiles.m -R -singleCompThread -R -nojvm -d ${installDir}; exit"
+    cmdArray=['matlab','-nodesktop','-nosplash','-r','"mcc','-mv','SCPLearnFromMatFiles.m','-R',
+                  '-singleCompThread','-R','-nojvm',';','exit"']
+                 
+    # compile matlab exec in libexec             
+    execCmd(cmdArray,verbose=1,simulate=False,shell=True)
+    exeFile='./'+'SCPLearnFromMatFiles'
+    if not fileExists(exeFile):
+        cryandexit("Error in building mcc executible, ", exeFile," not found")
+    cmdArray=['chmod','u+x',exeFile]
+    execCmd(cmdArray,verbose=1,simulate=False)
+    sys.exit()
+    sys.exit()
+    
+if not sys.argv[1] in ["","test","install"]:
+    cryandexit('unknown make target -- exiting')    
+    
+if sys.argv[1]=='test':
+    print('Running test code')
+    os.environ["PATH"] += os.pathsep + os.path.realpath('./')
+    cmdArray=['./scplearn','-d','test/nifti_list.txt','-p','test_2d','-m','test/test_2d_mask.nii.gz','-o','test/','-n','3','-s','10','-l','0']
+    execCmd(cmdArray,verbose=1,simulate=False)    
+    cmdArray=['./test_2d_compare.py']
+    execCmd(cmdArray,verbose=1,simulate=False) 
+    sys.exit()    
+
+if sys.argv[1]=='install':
+
+    if len(sys.argv) < 3:
+        cryandexit('provide installation directory - make install <installDir>')
+    
+    ## check if installDir exists
+    installDir = os.path.realpath(sys.argv[2])
+    print('Installing in folder '+installDir)
+    if not os.path.exists(installDir):
+        os.makedirs(installDir)
+    elif not os.path.isdir(installDir):
+        cryandexit("Install argument is not a directory", installDir)    
+    
+    os.makedirs(installDir+'/bin')
+    os.makedirs(installDir+'/doc')
+    os.makedirs(installDir+'/libexec')
+    os.makedirs(installDir+'/share')
+
+    # replace install directory in main executible
+    s = open("scplearn").read()
+    s = s.replace('PATH_TO_INSTALL', installDir+'/libexec/')
+    f = open("scplearn", 'w')
+    f.write(s)
+    f.close()    
+    
+    s = open("scptest").read()
+    s = s.replace('PATH_TO_INSTALL', installDir+'/libexec/')
+    f = open("scptest", 'w')
+    f.write(s)
+    f.close()   
+        
+    
+    # copy all dependencies to libexec
+    for pyf in ['SCPLearnFromMatFiles','ComputeROIAverages.py','replaceLabels_nib.py','SCPUtils.py']:
+        cmdArray=['cp',pyf,installDir+'/libexec/']
+        execCmd(cmdArray,verbose=1,simulate=False)
+        pyFile=installDir+'/libexec/'+pyf
+        if not fileExists(pyFile):
+            cryandexit("Error in copying python files to libexec dir, ", pyFile," not found")
+            
+    # copy execs to bin
+    for pyf in ['scplearn','scptest']:
+        cmdArray=['cp',pyf,installDir+'/bin/']
+        execCmd(cmdArray,verbose=1,simulate=False)
+        pyFile=installDir+'/bin/'+pyf
+        if not fileExists(pyFile):
+            cryandexit("Error in copying python files to bin dir, ", pyFile," not found")            
+    
+        cmdArray=['chmod','u+x',installDir+'/bin/'+pyf]
+        execCmd(cmdArray,verbose=1,simulate=False)
+    
+    ## copy test files to share
+    cmdArray=['cp','-r','test/',installDir+'/share/']
+    execCmd(cmdArray,verbose=1,simulate=False)
+    if not fileExists(installDir+'/share/'+'test/test_2d_subject_9.nii.gz'):
+        cryandexit("Error in copying test files to share dir, test/test_2d_subject_9.nii.gz not found")
+        
+    ## generate documentation
+    cmdArray=['cd','../',';','doxygen','Doxyfile']
+    execCmd(cmdArray,verbose=1,simulate=False,shell=True)
+    if not os.path.exists('../docs/'):
+        cryandexit("Error in building documentation, docs/ not found")
+        
+    ## copy to docs
+    cmdArray=['cp','-r','../docs/*',installDir+'/doc/']
+    execCmd(cmdArray,verbose=1,simulate=False,shell=True)
+    if not os.path.exists(installDir+'/doc/'):
+        cryandexit("Error in copying documentation to doc dir, doc/ not found")

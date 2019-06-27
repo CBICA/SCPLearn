@@ -25,7 +25,9 @@
 %> @b Contact: 
 %> sbia-software@uphs.upenn.edu
 %======================================================================
-function [] = SCPLearnFromMatFiles(matlist,K,pruning,lambda,outprefix,levels,verbose)
+function [] = SCPLearnFromMatFiles(matlist,K,pruning,lambda,outprefix,levels,verbose,test)
+
+
 
 matfile=[outprefix,'_ts.mat'];
 scpmatfile=[outprefix,'_SCPs.mat'];
@@ -64,6 +66,10 @@ while ischar(tline) %> while read line is a char
     end
     names = fieldnames(data_var);
     ts{count} = data_var.(names{1});
+
+	% normalize
+	ts{count} = bsxfun(@minus,ts{count},mean(ts{count},2));
+    ts{count} = bsxfun(@times,ts{count},1./std(ts{count},[],2));
     
     sample_weights=[sample_weights;str2double(fields)];
     ids{count}=filename;
@@ -87,19 +93,25 @@ if(ismember('sample_weights', {vars.name}))
     fprintf('Found sample weights as input\n')
     return
 else
-    if(str2double(levels)==0)
-        SCPLearn(matfile, K, lambda, scpmatfile,verbose,pruning)
+    if (test == '0')
+        SCPLearn(matfile, K, lambda, scpmatfile,verbose,pruning,levels)
     else
-        %SCPLearn_Hierarchy(matfile, K, lambda, outprefix,verbose,pruning)
-        SCPLearn_Hierarchy_twolevel(matfile, K, lambda, outprefix,verbose,pruning)
+        SCPTest(matfile,test,scpmatfile,verbose)
     end
 end
 
 load(scpmatfile)
 %> write csv file
 fp=fopen(csvfile,'w');
+header_string=['ID'];
+for kk=1:size(C,1)
+    header_string=[header_string,',SCP_',num2str(kk)];
+end
+fprintf(fp,'%s\n',header_string);
+
 for ii=1:length(ids)
-    string=[ids{ii}];
+    temp = strsplit(ids{ii},'/');
+    string=[temp{end}];
     for kk=1:size(C,1)
         string=[string,',',num2str(C(kk,ii))];
     end
@@ -108,19 +120,21 @@ end
 fclose(fp);    
 
 %> write basis file
-fp=fopen(basisfile,'w');
-header_string=['ROI_name'];
-for kk=1:size(B,2)
-    header_string=[header_string,',',num2str(kk)];
-end
-fprintf(fp,'%s\n',header_string);
-
-for ii=1:size(B,1)
-    string=[num2str(ii)];
+if (exist('B','var'))
+    fp=fopen(basisfile,'w');
+    header_string=['ROI_name'];
     for kk=1:size(B,2)
-        string=[string,',',num2str(B(ii,kk))];
+        header_string=[header_string,',SCP_',num2str(kk)];
     end
-    fprintf(fp,'%s\n',string);
-end
-fclose(fp); 
+    fprintf(fp,'%s\n',header_string);
+
+    for ii=1:size(B,1)
+        string=[num2str(ii)];
+        for kk=1:size(B,2)
+            string=[string,',',num2str(B(ii,kk))];
+        end
+        fprintf(fp,'%s\n',string);
+    end
+    fclose(fp); 
+end    
 end

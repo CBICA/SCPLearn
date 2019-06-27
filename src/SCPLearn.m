@@ -27,10 +27,8 @@
 %> @b Contact: 
 %> sbia-software@uphs.upenn.edu
 %======================================================================
-function [] = SCPLearn(DataMatFile, K, lambda, outprefix,verbose,pruningThr)
+function [] = SCPLearn(DataMatFile, K, lambda, outprefix,verbose,pruningThr,levels)
 %%
-%> set up env: set the seed of random number generator to shuffle
-rng('shuffle')
 
 %%
 %> load data
@@ -39,6 +37,7 @@ K = str2double(K);
 lambda = str2double(lambda);
 verbose = str2double(verbose);
 pruningThr = str2double(pruningThr);
+levels = str2double(levels);
 
 N = numel(ts);
 D = size(ts{1},1);
@@ -55,8 +54,10 @@ for n=1:numel(ts)
     data(:,:,n) =  corrcoef(ts{n}');
 end % end of for
 data(isnan(data))=0;
+ts_data(isnan(ts_data))=0;
+
 if(lambda == -1)
-    lambda = D/8;
+    lambda = D/10;
     fprintf('Sparsity is set to default %1.4f \n',lambda)
 end
 %%
@@ -66,33 +67,77 @@ if(K>D)
     params.initdict = repmat(eye(D),1,multFact);
     params.initdict = params.initdict(:,1:K);
 else
-    [IDX, ~] = kmeans(ts_data, K);
+    [IDX, ~] = kmeans(ts_data,K,'Distance','correlation','Replicates',10);  
     params.initdict = double(bsxfun(@eq,IDX,1:1:K));
 end
 params.data = data;
-params.iternum = 52;
+params.iternum = 51;
 params.lambda = lambda;
 params.pruningThr = 1;
-if(exist('sample_weights'))
+if(exist('sample_weights','var'))
     params.sample_weights = sample_weights;
 else
     params.sample_weights = ones(N,1);
 end
 
 %> call block solver that alternately solves for B and C until convergence
-[B,C,err] = BlockSolverLowRankFrob(params,verbose);
-%> update number of SCPs if it is pruned
-K = size(B,2);
+[B1,C1,~] = BlockSolverLowRankFrob(params,verbose);
+K_pruned = size(B1,2);
 
-%%
-%> Get SCP time-series
-B_ts = {};
-for n=1:N
-    B_ts{n} = B\ts{n};
-end % end of for
-
-%%
-%> saving all the results
-save(outprefix,'B','C','B_ts','err');
+%% level 2
+if (levels > 0) %% if hierarchical learning is specified
+	%> specify level 2 input parameters
+	K_second = levels;
+	B = zeros(D,K_pruned+K_second*K_pruned);
+	C = zeros(K_pruned+K_second*K_pruned,N);
+	nodes = zeros(1,K_pruned+K_second*K_pruned);
+	B(:,1:K_pruned) = B1;
+	C(1:K_pruned,:) = C1;
+	count = K_pruned;
+	for kk=1:K_pruned
+		K_second = levels;
+		indices = abs(B(:,kk))>0.3;
+		D_second = sum(indices);
+		lambda_second = 2;
+		fprintf('Running SCPLearn on SCP %d\n',kk);
+		data_new=zeros(D_second,D_second,N);
+		for n=1:N
+		    data_new(:,:,n) = data(indices,indices,n);%.*abs(B(indices,kk)*B(indices,kk)');
+		end
+		data_new(isnan(data_new))=0;
+		ts_data_new = ts_data(indices,:);
+		if(K_second>D_second)
+		    multFact = ceil(K_second/D_second);
+		    params.initdict = repmat(eye(D_second),1,multFact);
+		    params.initdict = params.initdict(:,1:K_second);
+		else
+		    [IDX, ~] = kmeans(ts_data_new,K_second,'Distance','correlation','Replicates',10);  
+		    params.initdict = double(bsxfun(@eq,IDX,1:1:K_second));
+		end
+		params.data = data_new;
+		params.pruningThr = pruningThr;
+		params.lambda = lambda_second;
+		params.isPositive=1;
+		%> call block solver that alternately solves for B and C until convergence
+		[B2,C2,~] = BlockSolverLowRankFrob(params,verbose);
+		K_second = size(B2,2);
+		B(indices,count+1:count+K_second) = B2;
+		C(count+1:count+K_second,:) = C2;
+		nodes(count+1:count+K_second) = kk;
+		count=count+K_second;
+		fprintf('SCP %d split into %d secondary SCPs\n',kk,K_second);
+	end
+	%%
+	B = B(:,1:count);
+	C=C(1:count,:);
+	nodes =  nodes(1:count);
+	%%
+	%> saving all the results
+	save(outprefix,'B','C','nodes');
+else %% if hierarchical learning not specified
+	B = B1;
+	C = C1;
+	save(outprefix,'B','C');
+end
 
 end % end of function
